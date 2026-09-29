@@ -1,0 +1,56 @@
+name: Release
+
+# Publishes to PyPI when a version tag is pushed, e.g. by
+# `bump2version patch && git push && git push --tags` (see CONTRIBUTING.rst).
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Check the tag matches GAMIPY.__version__
+        run: |
+          version=$(python -c "import re; print(re.search(r\"__version__ = '([^']+)'\", open('src/GAMIPY/__init__.py').read()).group(1))")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match __version__ = $version"
+            exit 1
+          fi
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          twine check --strict dist/*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # One-time setup on pypi.org: add this repository + workflow + environment
+    # as a Trusted Publisher for the GAMIPY project (no API token needed).
+    environment:
+      name: pypi
+      url: https://pypi.org/p/GAMIPY
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

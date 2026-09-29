@@ -1,0 +1,93 @@
+[build-system]
+requires = ["setuptools>=77.0"]  # SPDX `license` string
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "GAMIPY"
+dynamic = ["version"]  # single source: GAMIPY.__version__ (bumped by bump2version)
+description = "A genetic algorithm library for imputing missing data"
+readme = "README.rst"
+authors = [
+  {name = "Hasan Ali Özkan", email = "hasanaliozkan@mu.edu.tr"}
+]
+maintainers = [
+  {name = "Hasan Ali Özkan", email = "hasanaliozkan@mu.edu.tr"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+dependencies = [
+    "pandas",
+    "numpy",
+    "scipy",
+    "scikit-learn"
+]
+
+[project.optional-dependencies]
+dev = [
+    "coverage",  # testing
+    "mypy",  # linting
+    "pytest",  # testing
+    "ruff"  # linting
+]
+
+[project.urls]
+
+bugs = "https://github.com/hasanaliozkan-dev/GAMIPY/issues"
+changelog = "https://github.com/hasanaliozkan-dev/GAMIPY/blob/main/HISTORY.rst"
+homepage = "https://github.com/hasanaliozkan-dev/GAMIPY"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["GAMIPY*"]
+
+[tool.setuptools.package-data]
+# The bundled benchmark datasets that SampleData.load_data reads.
+"GAMIPY.datasets" = ["*/*.csv", "*/*.rst"]
+
+[tool.setuptools.dynamic]
+version = {attr = "GAMIPY.__version__"}
+
+# Coverage
+# --------
+
+[tool.coverage.run]
+source = ["src/GAMIPY"]
+branch = true
+
+[tool.coverage.report]
+# Line + branch coverage is a stable 95% (the GA's randomness doesn't move
+# it); CI fails if it drops below this floor. Raise it as coverage improves.
+fail_under = 94
+show_missing = true
+skip_covered = true
+
+# Mypy
+# ----
+
+[tool.mypy]
+# Run on Python 3.10 with the pinned mypy and pandas-stubs (see
+# requirements_dev.txt / the tox `mypy` env and CI): numpy releases newer
+# than the ones that install on 3.10 ship stubs with 3.12-only syntax.
+python_version = "3.10"
+files = ["src/GAMIPY"]
+strict = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+# No type information shipped for these.
+module = ["scipy.*", "sklearn.*"]
+ignore_missing_imports = true

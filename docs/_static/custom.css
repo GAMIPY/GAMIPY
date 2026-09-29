@@ -1,0 +1,16 @@
+/* Use the full browser width. Furo fixes the article at 46em and only
+   stretches the left sidebar's background; on wide screens let the article
+   grow into the free space instead (wide tables and code blocks in the API
+   reference need it). Below 63em Furo's mobile layout is left unchanged. */
+@media (min-width: 63em) {
+  .sidebar-drawer {
+    width: 18em;
+    min-width: 18em;
+  }
+  .content {
+    width: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 3em;
+  }
+}
