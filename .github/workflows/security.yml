@@ -1,0 +1,40 @@
+name: Security
+
+# Known-vulnerability scan of the runtime dependencies, independent of
+# Dependabot alerts: weekly, and whenever the dependency files change.
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # Mondays 06:00 UTC
+  push:
+    branches: [main]
+    paths: ["requirements.txt", "pyproject.toml"]
+  pull_request:
+    paths: ["requirements.txt", "pyproject.toml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    name: pip-audit (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The exact pins in requirements.txt.
+          - target: requirements.txt pins
+            python-version: "3.10"
+            args: -r requirements.txt
+          # What `pip install GAMIPY` resolves to today.
+          - target: latest resolution
+            python-version: "3.13"
+            args: .
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip pip-audit
+      - run: pip-audit ${{ matrix.args }} --progress-spinner off

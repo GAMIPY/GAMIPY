@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:  # reused by release.yml as the gate before publishing
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests (Python ${{ matrix.python-version }}${{ matrix.pinned && ', pinned deps' || '' }})
+    runs-on: ubuntu-latest
+    env:
+      # Coverage is measured on one job only; see the steps below.
+      COVERAGE_JOB: ${{ matrix.python-version == '3.13' && !matrix.pinned }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Latest dependencies, as `pip install GAMIPY` resolves them.
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        pinned: [false]
+        include:
+          # The exact versions pinned in requirements.txt.
+          - python-version: "3.10"
+            pinned: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ "${{ matrix.pinned }}" = "true" ]; then
+            pip install -r requirements.txt pytest
+          else
+            pip install . pytest coverage==7.16.2  # same pin as requirements_dev.txt
+          fi
+      - name: Run tests
+        if: env.COVERAGE_JOB != 'true'
+        run: pytest -q
+      - name: Run tests with coverage
+        if: env.COVERAGE_JOB == 'true'
+        run: |
+          coverage run -m pytest -q
+          coverage xml
+          coverage html
+          coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+          # Fails the job if coverage drops below fail_under (pyproject.toml).
+          coverage report
+      - name: Upload HTML coverage report
+        if: env.COVERAGE_JOB == 'true' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html
+          path: htmlcov/
+      - name: Check for a Codecov token
+        id: codecov
+        if: env.COVERAGE_JOB == 'true'
+        run: echo "enabled=${{ secrets.CODECOV_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+      - name: Upload coverage to Codecov
+        # Skipped until a CODECOV_TOKEN repository secret is added (see
+        # CONTRIBUTING.rst); the trend is then tracked on codecov.io.
+        if: steps.codecov.outputs.enabled == 'true'
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+          fail_ci_if_error: false
+
+  lint:
+    name: lint (ruff + mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          # mypy targets 3.10; versions pinned to match requirements_dev.txt
+          # (see the [tool.mypy] comment in pyproject.toml).
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements_dev.txt
+      - name: Install linters
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt ruff==0.16.9 mypy==1.14.1 pandas-stubs==2.2.2.240807
+      - name: ruff
+        run: ruff check .
+      - name: mypy
+        run: mypy
+
+  docs:
+    name: docs (Sphinx, warnings are errors)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"  # same as .readthedocs.yaml
+          cache: pip
+          cache-dependency-path: docs/requirements.txt
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install . -r docs/requirements.txt
+      - name: Build
+        run: sphinx-build -W --keep-going -b html docs docs/_build/html

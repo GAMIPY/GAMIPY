@@ -1,0 +1,28 @@
+# Explicit ruff configuration. Without one, ruff falls back to its built-in
+# default rule set, which differs between ruff versions (0.3.5 enabled only
+# E4/E7/E9/F; recent versions enable hundreds of rules), so the same code
+# could pass or fail depending on which ruff happened to be installed.
+# ruff itself is pinned (requirements_dev.txt, tox.ini, CI) to 0.16.9.
+target-version = "py310"  # keep in sync with requires-python in pyproject.toml
+line-length = 120
+src = ["src", "tests"]
+extend-exclude = [
+    "src/venv",
+    "docs",
+]
+
+[lint]
+select = [
+    "E4", "E7", "E9",  # pycodestyle errors (ruff's classic defaults)
+    "E501",            # line length (120, see line-length above)
+    "W",               # pycodestyle warnings: trailing whitespace etc.
+    "F",               # pyflakes: unused/undefined names, star imports
+    "I",               # isort: import ordering
+    "B",               # flake8-bugbear: mutable defaults, swallowed errors
+    "UP",              # pyupgrade, bounded by target-version
+    "RUF",             # ruff-specific: implicit Optional, mutable class attrs
+]
+
+[lint.per-file-ignores]
+# Package __init__ re-exports submodules on purpose.
+"src/GAMIPY/__init__.py" = ["F401"]

@@ -1,0 +1,27 @@
+# Weekly dependency update PRs. Security alerts / security-update PRs are a
+# separate repository setting (Settings → Code security → Dependabot).
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"  # requirements.txt, requirements_dev.txt, pyproject.toml
+    schedule:
+      interval: weekly
+    groups:
+      python-dependencies:
+        patterns: ["*"]
+    ignore:
+      # mypy is upgraded deliberately: a new release can change what the
+      # strict check reports (pyproject.toml [tool.mypy]).
+      - dependency-name: mypy
+      # Must match the pandas pin in requirements.txt.
+      - dependency-name: pandas-stubs
+    # Decline bumps whose new version drops Python 3.10: tox installs
+    # requirements_dev.txt into its py310 environment.
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]

@@ -1,0 +1,41 @@
+# Local checks before each commit. Enable once per clone with:
+#   pre-commit install
+# Run on everything with:
+#   pre-commit run --all-files
+# The same ruff and mypy checks run in CI (.github/workflows/ci.yml, `lint`
+# job), so skipping a hook locally does not skip it on GitHub.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      # Guards against experiment outputs / datasets being committed by
+      # accident.
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.9  # keep in sync with requirements_dev.txt, tox.ini and CI
+    hooks:
+      - id: ruff-check
+
+  - repo: local
+    hooks:
+      # mypy results depend on the exact toolchain (mypy, pandas-stubs and
+      # numpy versions), so this runs precisely what CI's lint job installs
+      # instead of a mirrors-mypy environment that could disagree with CI.
+      # Requires uv (https://docs.astral.sh/uv/); `SKIP=mypy git commit`
+      # skips it if uv isn't available.
+      - id: mypy
+        name: mypy (Python 3.10, pinned as in CI)
+        language: system
+        entry: >-
+          uv run --quiet --no-project --isolated --python 3.10
+          --with mypy==1.14.1 --with pandas-stubs==2.2.2.240807
+          --with-requirements requirements.txt mypy
+        pass_filenames: false
+        files: ^(src/GAMIPY/|pyproject\.toml$|requirements\.txt$)
+        types_or: [python, toml, text]

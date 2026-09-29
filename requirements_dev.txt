@@ -1,0 +1,25 @@
+# Dev tooling. tox installs this into every environment, so each pin must
+# support Python 3.10-3.13 (these are the newest releases that still do).
+# pip/wheel are deliberately not pinned: tox upgrades pip itself, and
+# `python -m build` brings its own wheel.
+
+# Tests and coverage
+pytest==9.1.1
+coverage==7.16.2
+tox==4.64.4
+
+# Linting / types. pandas-stubs matches pandas==2.2.2 in requirements.txt.
+ruff==0.16.9
+mypy==1.14.1
+pandas-stubs==2.2.2.240807
+pre-commit==4.6.2
+
+# Docs (docs/conf.py uses the Furo theme)
+Sphinx==8.1.3
+furo==2025.12.19
+watchdog==6.0.0
+
+# Release
+bump2version==1.0.1
+build==1.6.1
+twine==7.0.0

@@ -1,0 +1,4 @@
+# Docs build dependencies (used by .readthedocs.yaml; same pins as
+# requirements_dev.txt).
+Sphinx==8.1.3
+furo==2025.12.19
