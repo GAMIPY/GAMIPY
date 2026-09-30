@@ -10,6 +10,7 @@ from GAMIPY.bio.distance import CosineDistance, DistanceMetric, ProcrustesDistan
 from GAMIPY.bio.encoding import CategoricalEncoder
 from GAMIPY.bio.moments import Moments
 from GAMIPY.data.data import Data
+from GAMIPY.parallel import map_chunks, thread_count
 from GAMIPY.population.individual import Individual
 from GAMIPY.population.population import Population
 
@@ -199,6 +200,7 @@ class Fitness:
         reference: Data | None = None,
         full_data_statistics: bool = False,
         standardize: bool = False,
+        n_jobs: int | None = 1,
     ) -> None:
         """
         Initializes the Fitness class with a population of individuals and the data for imputation.
@@ -223,6 +225,8 @@ class Fitness:
           complete rows plus the imputed rows) instead of the imputed rows alone. Default False.
         - **standardize (bool)**: Use scale-free terms: z-scored mean differences, skewness
           differences and correlation-matrix differences, each averaged over columns. Default False.
+        - **n_jobs (int | None)**: Threads computing the statistics of the individuals, see
+          ``GAMIPY.parallel.thread_count``. The scores don't depend on it. Default 1.
 
         """
 
@@ -238,6 +242,7 @@ class Fitness:
         self.reference = reference
         self.full_data_statistics = full_data_statistics
         self.standardize = standardize
+        self.n_jobs = n_jobs
 
     def impute_data(self, individual: Individual) -> pd.DataFrame:
         """
@@ -344,12 +349,22 @@ class Fitness:
             }
         scores: dict[int, float] = {}
         per_chunk = max(1, rows.CHUNK_CELLS // max(1, rows.base.size))
+        threads = thread_count(self.n_jobs)
         for start in range(0, len(individuals), per_chunk):
+            # stack() updates rows' gene-order cache, so it runs here. The
+            # moments run in threads; the scores are computed from them joined
+            # back together, as without threads (BLAS rounding can depend on
+            # where a vector sits in memory, so scoring each thread's arrays
+            # could differ in the last bit).
             stacked, complete = rows.stack(individuals[start:start + per_chunk])
             if not complete.any():
                 continue
             stacked = stacked[complete]
-            moments = rows.moments(stacked)
+
+            def moments_of(part: slice, stacked: npt.NDArray[np.float64] = stacked) -> Moments:
+                return rows.moments(stacked[part])
+
+            moments = Moments.concatenate(map_chunks(moments_of, len(stacked), threads))
             if reference_summary is not None:
                 values = self._standardized_scores(moments, target)
             else:

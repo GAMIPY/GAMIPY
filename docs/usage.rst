@@ -54,6 +54,22 @@ encodes is chosen with ``representation``:
     cells.run()
     assert not cells.imputed_data.isnull().any().any()
 
+Threads
+-------
+
+The population is scored in threads: ``n_jobs=None`` (the default) uses up to
+four, one per core; ``n_jobs=-1`` every core; ``n_jobs=1`` none. Only the
+scoring (NumPy work) runs in threads; everything that draws random numbers
+stays in order, so the result is the same for any ``n_jobs``. When you run
+many imputations in parallel processes, pass ``n_jobs=1`` so the processes
+don't compete for the cores.
+
+.. code-block:: python
+
+    single = GAMIPY(data=damaged, population_size=20, generations=5, n_jobs=1)
+    single.run()
+    assert not single.imputed_data.isnull().any().any()
+
 Choosing the genetic operators
 ------------------------------
 

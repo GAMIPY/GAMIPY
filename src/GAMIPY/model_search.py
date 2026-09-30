@@ -24,6 +24,7 @@ import pandas as pd
 
 from GAMIPY.config import GAConfig
 from GAMIPY.data.data import Data
+from GAMIPY.parallel import map_chunks, thread_count
 
 FloatArray = npt.NDArray[np.float64]
 
@@ -49,11 +50,15 @@ class ModelSearch:
     ----------
     - **config (GAConfig)**: The hyperparameters (``population_size``, ``generations``,
       ``tournament_size``, ``crossover_rate``, ``mutation_rate``, ``mutation_scale``,
-      ``validation_fraction``, ``patience``).
+      ``validation_fraction``, ``patience``, ``n_jobs``).
     - **data (Data)**: The dataset as given.
     - **targets (list)**: The columns with a missing value, whose models are evolved.
     - **generations_run (int)**: Generations evaluated by the last ``run()``.
     - **best_validation_error (float | None)**: Validation error of the returned models.
+    - **history (list)**: One dict per generation of the last ``run()``: ``generation``,
+      ``best_training_error`` (lowest total training error in that generation) and
+      ``best_validation_error`` (mean over targets of the best validation error so far; NaN
+      without validation cells).
     """
 
     # How categorical targets are scored: 'log' (cross-entropy of the class
@@ -76,6 +81,7 @@ class ModelSearch:
         self.targets = [c for c in frame.columns if frame[c].isna().any()]
         self.generations_run = 0
         self.best_validation_error: float | None = None
+        self.history: list[dict[str, float]] = []
         self._layout()
 
     @staticmethod
@@ -178,6 +184,25 @@ class ModelSearch:
                 errors[:, t] = (outputs[:, rows][:, :, out].argmax(axis=2) != truth).mean(axis=1)
         return errors
 
+    def _evaluate(
+        self, weights: FloatArray, bias: FloatArray, features: FloatArray, missing: npt.NDArray[np.bool_],
+        training: dict[Any, tuple[npt.NDArray[np.intp], FloatArray]],
+        validation: dict[Any, tuple[npt.NDArray[np.intp], FloatArray]],
+    ) -> tuple[FloatArray, FloatArray]:
+        """Training and validation errors of every candidate (candidates x
+        targets each; the training errors twice without validation cells),
+        computed in ``config.n_jobs`` threads over chunks of candidates."""
+
+        def score(part: slice) -> tuple[FloatArray, FloatArray]:
+            outputs = self._predict(weights[part], bias[part], features, missing)
+            errors = self._column_errors(outputs, training, self.training_loss)
+            judged = self._column_errors(outputs, validation, self.selection_loss) if validation else errors
+            return errors, judged
+
+        parts = map_chunks(score, len(weights), thread_count(self.config.n_jobs))
+        return (np.concatenate([errors for errors, _ in parts]),
+                np.concatenate([judged for _, judged in parts]))
+
     def _cells(self, frame: pd.DataFrame) -> dict[Any, tuple[npt.NDArray[np.intp], FloatArray]]:
         """Observed cells of each target in `frame`: rows and true values
         (standardized, or class index)."""
@@ -261,6 +286,7 @@ class ModelSearch:
             raise ValueError(f"Column '{empty[0]}' has no observed values to impute from.")
         result = frame.copy()
         self.generations_run = 0
+        self.history = []
         if not self.targets:
             return result
         # Validation cells: hidden from the models' inputs and training cells.
@@ -287,10 +313,8 @@ class ModelSearch:
         best_models: list[tuple[float, FloatArray, FloatArray] | None] = [None] * len(self.targets)
         since_improvement = 0
         for _ in range(self.config.generations):
-            outputs = self._predict(weights, bias, features, missing)
-            errors = self._column_errors(outputs, training, self.training_loss)
+            errors, judged = self._evaluate(weights, bias, features, missing, training, validation)
             self.generations_run += 1
-            judged = self._column_errors(outputs, validation, self.selection_loss) if validation else errors
             improved = False
             for t, col in enumerate(self.targets):
                 if np.isnan(judged[:, t]).all():
@@ -305,6 +329,12 @@ class ModelSearch:
                                       bias[leader, slots].copy())
                     improved = True
             since_improvement = 0 if improved else since_improvement + 1
+            self.history.append({
+                'generation': self.generations_run,
+                'best_training_error': float(np.min(np.nansum(errors, axis=1))),
+                'best_validation_error': (float(np.mean([m[0] for m in best_models if m is not None]))
+                                          if validation else float('nan')),
+            })
             if self.config.patience and since_improvement >= self.config.patience:
                 break
             weights, bias = self._next_generation(weights, bias, errors)

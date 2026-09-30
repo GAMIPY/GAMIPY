@@ -43,6 +43,9 @@ class GeneticAlgorithmRunner:
       ``config.generations`` after an early stop).
     - **best_validation_error (float | None)**: Validation error of the individual ``run()``
       returned, when validation cells are used.
+    - **history (list)**: One dict per generation of the last ``run()``: ``generation``,
+      ``best_score`` (lowest fitness score so far) and ``best_validation_error`` (lowest
+      validation error so far; NaN without validation cells).
     """
 
     # Children from crossover (2) + the mutated individual (1), added to the
@@ -77,6 +80,7 @@ class GeneticAlgorithmRunner:
         self._fitness_context: dict[str, Any] | None = None
         self.generations_run = 0
         self.best_validation_error: float | None = None
+        self.history: list[dict[str, float]] = []
         self.population: Population | None = None
         self._user_seed: pd.DataFrame | None = None
 
@@ -301,6 +305,7 @@ class GeneticAlgorithmRunner:
         track_elite = self.config.result_method == 'elite_mean'
         since_improvement = 0
         self.generations_run = 0
+        self.history = []
 
         for _ in range(self.config.generations):
             # Survivors keep their score: their genes and the context are unchanged.
@@ -324,8 +329,13 @@ class GeneticAlgorithmRunner:
                     if track_elite:
                         elite = self._update_elite(elite, individual, error)
                 since_improvement = 0 if improved else since_improvement + 1
-                if self.config.patience and since_improvement >= self.config.patience:
-                    break
+            self.history.append({
+                'generation': self.generations_run,
+                'best_score': float(best_individual.score),
+                'best_validation_error': best_validation[0] if best_validation is not None else float('nan'),
+            })
+            if self.validation and self.config.patience and since_improvement >= self.config.patience:
+                break
 
             # Selection.select() guarantees a non-empty list, but crossover
             # needs two parents.
