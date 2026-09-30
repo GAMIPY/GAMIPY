@@ -52,6 +52,9 @@ class GAConfig:
     - **representation (str)**: What an individual is: ``'model'`` (default: per-column linear
       prediction models, see ``GAMIPY.model_search``) or ``'cells'`` (one gene per missing cell).
       The initialization, selection, crossover and fitness-metric options apply to ``'cells'``.
+    - **n_jobs (int | None)**: Threads that score the population (default None: up to 4, one per
+      core; -1: every core; 1: no threads). Only the scoring runs in threads, so the result is
+      the same for any value (see ``GAMIPY.parallel``).
 
     GAMIPY is a pure genetic algorithm: no other imputation method seeds its
     population, enters its fitness or replaces its result. Other imputers
@@ -80,6 +83,7 @@ class GAConfig:
     result_method: str = 'best'
     elite_size: int = 5
     representation: str = 'model'
+    n_jobs: int | None = None
 
     @property
     def selection_options(self) -> dict[str, Any]:

@@ -71,6 +71,8 @@ Features
   for every incomplete column - far fewer parameters, and the most accurate
   mode on the bundled benchmarks. ``representation="cells"`` evolves one value
   per missing cell; the operator options below apply to it.
+* **Multithreaded scoring**: the population is scored in threads
+  (``n_jobs``); the result doesn't depend on the number of threads.
 * **Guarded against overfitting**: by default part of the observed cells is
   hidden for validation; the GA returns the candidate that imputes them best
   and stops early once that stops improving.

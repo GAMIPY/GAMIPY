@@ -71,6 +71,19 @@ class Moments:
             cross=deviations @ deviations.transpose(0, 2, 1),
         )
 
+    @classmethod
+    def concatenate(cls, parts: list[Moments]) -> Moments:
+        """The moments of the datasets of `parts` (same row count), in order."""
+        if len(parts) == 1:
+            return parts[0]
+        return cls(
+            count=parts[0].count,
+            mean=np.concatenate([part.mean for part in parts]),
+            m2=np.concatenate([part.m2 for part in parts]),
+            m3=np.concatenate([part.m3 for part in parts]),
+            cross=np.concatenate([part.cross for part in parts]),
+        )
+
     def combine(self, other: Moments) -> Moments:
         """The moments of each dataset of `other` with this summary's rows
         added (this summary is for one dataset, broadcast to all of `other`'s)."""

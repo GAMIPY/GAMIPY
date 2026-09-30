@@ -7,6 +7,7 @@ from .config import GAConfig
 from .data.data import Data
 from .datasets import sample_data
 from .model_search import ModelSearch
+from .parallel import thread_count
 from .population.individual import Individual
 from .population.population import Population
 from .runner import GeneticAlgorithmRunner
@@ -40,7 +41,7 @@ class GAMIPY:
       ``(row, row_m, column, value)`` row per missing cell (default None).
     - **ss_number (int)**: Individuals replaced per generation by ``'steady_state'`` (default 1).
     - **validation_fraction, patience, standardize, full_data_statistics, mutation_type,
-      mutation_scale, result_method, elite_size, representation**: see :class:`~GAMIPY.config.GAConfig`.
+      mutation_scale, result_method, elite_size, representation, n_jobs**: see :class:`~GAMIPY.config.GAConfig`.
 
     Attributes
     ----------
@@ -71,7 +72,8 @@ class GAMIPY:
                 mutation_scale: float = 0.1,
                 result_method: str = 'best',
                 elite_size: int = 5,
-                representation: str = 'model') -> None:
+                representation: str = 'model',
+                n_jobs: int | None = None) -> None:
         self.config = GAConfig(
             population_size=population_size,
             generations=generations,
@@ -94,9 +96,11 @@ class GAMIPY:
             result_method=result_method,
             elite_size=elite_size,
             representation=representation,
+            n_jobs=n_jobs,
         )
         if representation not in ('cells', 'model'):
             raise ValueError(f"representation must be 'cells' or 'model', got {representation!r}.")
+        thread_count(n_jobs)  # raises for an invalid value
         self.factory = StrategyFactory(self.config)
         self.data = Data(data)
         self.runner = GeneticAlgorithmRunner(self.config, self.data, self.factory)

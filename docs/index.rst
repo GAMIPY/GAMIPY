@@ -22,6 +22,7 @@ Welcome to GAMIPY's documentation!
    source/runner
    source/imputation
    source/evaluation
+   source/parallel
 
 .. toctree::
    :maxdepth: 1

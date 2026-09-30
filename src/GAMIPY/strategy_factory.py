@@ -86,6 +86,7 @@ class StrategyFactory:
             metric=self.fitness_metric(),
             full_data_statistics=self.config.full_data_statistics,
             standardize=self.config.standardize,
+            n_jobs=self.config.n_jobs,
             **context,
         )
 
