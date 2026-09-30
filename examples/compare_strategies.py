@@ -55,6 +55,7 @@ def main() -> None:
         np.random.seed(0)
         start = time.perf_counter()
         gamipy = GAMIPY(
+            representation='cells',  # these scripts compare the cells GA's operators
             data=damaged,
             population_size=20,
             generations=10,

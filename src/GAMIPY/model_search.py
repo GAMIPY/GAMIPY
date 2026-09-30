@@ -70,11 +70,18 @@ class ModelSearch:
         self.categorical = [c for c in frame.columns if c not in self.numeric]
         self.classes = {c: list(frame[c].dropna().unique()) for c in self.categorical}
         self.center = {c: float(frame[c].mean()) for c in self.numeric}
-        self.scale = {c: float(frame[c].std()) or 1.0 for c in self.numeric}
-        self.targets = [c for c in frame.columns if frame[c].isna().any() and frame[c].notna().sum() >= 2]
+        # A constant column, or one with a single observed value (std NaN),
+        # is scaled by 1.
+        self.scale = {c: self._usable_scale(frame[c].std()) for c in self.numeric}
+        self.targets = [c for c in frame.columns if frame[c].isna().any()]
         self.generations_run = 0
         self.best_validation_error: float | None = None
         self._layout()
+
+    @staticmethod
+    def _usable_scale(std: Any) -> float:
+        value = float(std)
+        return value if np.isfinite(value) and value > 0 else 1.0
 
     # --- encoding ---------------------------------------------------------
 
@@ -242,8 +249,16 @@ class ModelSearch:
                 np.concatenate([bias[elite], assembled_b[None], immigrants_b, children_b]))
 
     def run(self) -> pd.DataFrame:
-        """Evolves the models and returns the imputed DataFrame."""
+        """Evolves the models and returns the imputed DataFrame.
+
+        Raises
+        ------
+        - **ValueError**: If a column has no observed value at all (nothing to learn it from).
+        """
         frame = self.data.data
+        empty = [c for c in frame.columns if frame[c].notna().sum() == 0]
+        if empty:
+            raise ValueError(f"Column '{empty[0]}' has no observed values to impute from.")
         result = frame.copy()
         self.generations_run = 0
         if not self.targets:

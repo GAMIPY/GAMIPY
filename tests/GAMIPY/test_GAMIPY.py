@@ -382,7 +382,7 @@ class TestRun(unittest.TestCase):
         self.df.loc[15, "f3"] = None
 
     def test_run_completes_and_imputed_data_is_a_complete_dataframe(self):
-        gamipy = GAMIPY(
+        gamipy = GAMIPY(representation='cells',
             data=self.df,
             population_size=20,
             generations=2,
@@ -408,7 +408,7 @@ class TestRun(unittest.TestCase):
         df["cat"] = rng.choice(["red", "green", "blue"], len(df))
         df.loc[20, "cat"] = None
 
-        gamipy = GAMIPY(
+        gamipy = GAMIPY(representation='cells',
             data=df,
             population_size=20,
             generations=2,
@@ -421,7 +421,7 @@ class TestRun(unittest.TestCase):
     def test_run_with_selection_number_one_raises_value_error(self):
         # Crossover needs two parents; run() now checks len(selected) and
         # raises a clear ValueError instead of an IndexError on selected[1].
-        gamipy = GAMIPY(data=self.df, population_size=20, generations=2, selection_number=1)
+        gamipy = GAMIPY(representation='cells', data=self.df, population_size=20, generations=2, selection_number=1)
         with self.assertRaises(ValueError):
             gamipy.run()
 
@@ -429,7 +429,7 @@ class TestRun(unittest.TestCase):
         # LSP: run() must work whichever Selection subclass is plugged in.
         for method in ["elitist", "tournament", "roulette", "rank", "steady_state", "stochastic_universal"]:
             with self.subTest(method=method):
-                gamipy = GAMIPY(
+                gamipy = GAMIPY(representation='cells',
                     data=self.df,
                     population_size=20,
                     generations=3,
@@ -444,7 +444,7 @@ class TestRun(unittest.TestCase):
     def test_run_with_invalid_crossover_type_raises_value_error(self):
         # Fails up front, before the first generation, rather than as an
         # AttributeError on `None.run(...)` inside the loop.
-        gamipy = GAMIPY(
+        gamipy = GAMIPY(representation='cells',
             data=self.df,
             population_size=20,
             generations=2,
@@ -455,7 +455,7 @@ class TestRun(unittest.TestCase):
             gamipy.run()
 
     def test_run_with_invalid_selection_method_raises_value_error(self):
-        gamipy = GAMIPY(
+        gamipy = GAMIPY(representation='cells',
             data=self.df,
             population_size=20,
             generations=2,
@@ -466,7 +466,7 @@ class TestRun(unittest.TestCase):
             gamipy.run()
 
     def test_run_with_invalid_initialization_strategy_raises_value_error(self):
-        gamipy = GAMIPY(
+        gamipy = GAMIPY(representation='cells',
             data=self.df,
             population_size=20,
             generations=2,
@@ -477,7 +477,7 @@ class TestRun(unittest.TestCase):
             gamipy.run()
 
     def test_run_with_steady_state_selection_completes(self):
-        gamipy = GAMIPY(
+        gamipy = GAMIPY(representation='cells',
             data=self.df,
             population_size=20,
             generations=2,
@@ -496,7 +496,7 @@ class TestRun(unittest.TestCase):
         # (20 -> 33 -> ...).
         for method, extra in [("steady_state", {"ss_number": 1}), ("steady_state", {"ss_number": 2}), ("elitist", {})]:
             with self.subTest(method=method, **extra):
-                gamipy = GAMIPY(
+                gamipy = GAMIPY(representation='cells',
                     data=self.df,
                     population_size=20,
                     generations=4,

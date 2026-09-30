@@ -77,7 +77,7 @@ class TestEveryStrategyCombination(IntegrationAssertions):
             with self.subTest(initialization_strategy=init, selection_method=select, crossover_type=cross):
                 original = self.df.copy()
                 gamipy = GAMIPY(
-                    data=self.df, population_size=12, generations=2,
+                    representation='cells', data=self.df, population_size=12, generations=2,
                     selection_number=4, tournament_size=3,
                     initialization_strategy=init, selection_method=select,
                     crossover_type=cross, heuristic_population=mean_seed(self.df),
@@ -92,7 +92,7 @@ class TestEveryStrategyCombination(IntegrationAssertions):
                 continue  # reserved for the covariance comparison
             with self.subTest(fitness_method=method):
                 gamipy = GAMIPY(
-                    data=self.df, population_size=12, generations=2,
+                    representation='cells', data=self.df, population_size=12, generations=2,
                     selection_number=4, fitness_method=method,
                 )
                 gamipy.run()
@@ -115,7 +115,7 @@ class TestMixedNumericalAndCategoricalData(IntegrationAssertions):
             for init in ['random', 'zeros', 'ones', 'constant']:
                 with self.subTest(crossover_type=cross, initialization_strategy=init):
                     gamipy = GAMIPY(
-                        data=self.df, population_size=12, generations=2,
+                        representation='cells', data=self.df, population_size=12, generations=2,
                         selection_number=4, crossover_type=cross,
                         initialization_strategy=init,
                     )
@@ -128,7 +128,7 @@ class TestMixedNumericalAndCategoricalData(IntegrationAssertions):
         for cross in ['arithmetic', 'blend']:
             with self.subTest(crossover_type=cross):
                 gamipy = GAMIPY(
-                    data=self.df, population_size=12, generations=2,
+                    representation='cells', data=self.df, population_size=12, generations=2,
                     selection_number=4, crossover_type=cross,
                 )
                 with self.assertRaises(ValueError):
@@ -145,7 +145,7 @@ class TestBundledDatasetPipeline(IntegrationAssertions):
         self.assertTrue(damaged.isnull().any().any())
 
         gamipy = GAMIPY(
-            data=damaged, population_size=20, generations=3,
+            representation='cells', data=damaged, population_size=20, generations=3,
             selection_number=5, crossover_rate=0.8, mutation_rate=0.1,
         )
         gamipy.run()
@@ -179,7 +179,7 @@ class TestColumnsWithNoObservedValueInMissingRows(IntegrationAssertions):
         })
 
     def run_gamipy(self, df, init):
-        gamipy = GAMIPY(data=df, population_size=10, generations=2,
+        gamipy = GAMIPY(representation='cells', data=df, population_size=10, generations=2,
                         selection_number=4, initialization_strategy=init)
         gamipy.run()
         self.assert_valid_imputation(df, gamipy)
@@ -208,7 +208,7 @@ class TestColumnsWithNoObservedValueInMissingRows(IntegrationAssertions):
     def test_column_with_no_observed_value_at_all_raises_value_error(self):
         df = self.df.copy()
         df['empty'] = np.nan
-        gamipy = GAMIPY(data=df, population_size=10, generations=2, selection_number=4)
+        gamipy = GAMIPY(representation='cells', data=df, population_size=10, generations=2, selection_number=4)
         with self.assertRaises(ValueError):
             gamipy.run()
 
@@ -220,7 +220,8 @@ class TestColumnsWithNoObservedValueInMissingRows(IntegrationAssertions):
         df.loc[[0, 1], 'b'] = [0.5, 1.5]  # ... have b in [0.5, 1.5] only
         df.loc[2, 'b'] = None
         df.loc[2, 'a'] = 2.0
-        gamipy = GAMIPY(data=df, population_size=20, initialization_strategy='random', validation_fraction=0.0)
+        gamipy = GAMIPY(representation='cells', data=df, population_size=20, initialization_strategy='random',
+                        validation_fraction=0.0)
         gamipy.initialize_population()
         for individual in gamipy.population.population:
             for gene in individual.genes:

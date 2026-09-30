@@ -66,10 +66,11 @@ Features
 * **Structure-preserving fitness**: a candidate imputation is scored by how
   well the statistics (means, skewness, correlations) of the imputed dataset
   match the observed data.
-* **Model representation** (``representation="model"``): instead of one value
-  per missing cell, the GA evolves a small linear prediction model for every
-  incomplete column - far fewer parameters, and the most accurate mode on the
-  bundled benchmarks.
+* **Model representation** (the default, ``representation="model"``): instead
+  of one value per missing cell, the GA evolves a small linear prediction model
+  for every incomplete column - far fewer parameters, and the most accurate
+  mode on the bundled benchmarks. ``representation="cells"`` evolves one value
+  per missing cell; the operator options below apply to it.
 * **Guarded against overfitting**: by default part of the observed cells is
   hidden for validation; the GA returns the candidate that imputes them best
   and stops early once that stops improving.

@@ -90,6 +90,24 @@ class TestModelThroughGAMIPY(unittest.TestCase):
         self.assertFalse(gamipy.imputed_data.isna().any().any())
         self.assertIsNotNone(gamipy.model)
 
+    def test_model_is_the_default(self):
+        self.assertEqual(GAConfig().representation, 'model')
+        self.assertIsNotNone(GAMIPY(data=mixed_frame()[1]).model)
+
+    def test_a_column_with_one_observed_value_is_filled(self):
+        df = pd.DataFrame({'a': [1.0, 2, 3, 4, 5, 6], 'b': [np.nan, 5, np.nan, np.nan, np.nan, np.nan],
+                           'c': ['x', 'y', None, 'x', 'y', 'x']})
+        seeded()
+        gamipy = GAMIPY(data=df, population_size=10, generations=3)
+        gamipy.run()
+        self.assertFalse(gamipy.imputed_data.isna().any().any())
+        self.assertEqual(set(gamipy.imputed_data['b']), {5.0})
+
+    def test_a_column_with_no_observed_value_raises(self):
+        gamipy = GAMIPY(data=mixed_frame()[1].assign(empty=np.nan), population_size=10, generations=3)
+        with self.assertRaises(ValueError):
+            gamipy.run()
+
     def test_unknown_representation_raises(self):
         with self.assertRaises(ValueError):
             GAMIPY(data=mixed_frame()[1], representation='magic')

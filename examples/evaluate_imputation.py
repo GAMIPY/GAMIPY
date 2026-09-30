@@ -50,13 +50,13 @@ def main() -> None:
     print(f"Hid {int(damaged.isna().sum().sum())} of {original.size} values "
           f"({len(columns)} columns, 4 of them categorical)\n")
 
+    # The default representation: the GA evolves one prediction model per
+    # incomplete column.
     gamipy = GAMIPY(
         data=damaged,
         population_size=20,
         generations=10,
-        selection_method="tournament",
         tournament_size=4,
-        crossover_type="uniform",
         crossover_rate=0.8,
         mutation_rate=0.1,
     )

@@ -13,7 +13,7 @@ git commit messages or pull request descriptions in this repository.
 
 **GAMIPY must stay a pure GA** (the author's standing rule): no other imputer (mean, kNN, IterativeImputer, …) may seed the population, enter the fitness, replace the result, or be blended/selected by the GA. Other imputers belong only in benchmarks, as baselines; the benchmark and its baselines live in the separate development/research repository (GAMIPY_DEVELOPMENT).
 
-Accuracy (benchmark of 6 datasets × 10%/30% MCAR × 3 masks × 3 GA seeds, NRMSE, lower is better): model representation (`representation='model'`) 0.146, cells representation (the default) 0.386; baselines iterative imputer 0.146, kNN 0.175, mean 0.208. The benchmark, the measurements and the improvement plan live in GAMIPY_DEVELOPMENT. Don't state performance claims in docs without new measurements; `examples/compare_strategies.py` and `GAMIPY.evaluation` are the tools for measuring.
+Accuracy (benchmark of 6 datasets × 10%/30% MCAR × 3 masks × 3 GA seeds, NRMSE, lower is better): model representation (`representation='model'`, the default) 0.146, cells representation 0.386; baselines iterative imputer 0.146, kNN 0.175, mean 0.208. The benchmark, the measurements and the improvement plan live in GAMIPY_DEVELOPMENT. Don't state performance claims in docs without new measurements; `examples/compare_strategies.py` and `GAMIPY.evaluation` are the tools for measuring.
 
 ## Development Commands
 
@@ -125,6 +125,7 @@ The library is organized into four subpackages plus top-level orchestration modu
 - `selection_number` (int, default 10, must be ≥ 2 for crossover)
 - `fitness_method` (str, default `'cosine'`): any `DISTANCE_METRICS` key except `'procrustes'` (reserved for the covariance term)
 - `initialization_strategy` (str, default `'random'`): a `POPULATION_STRATEGIES` key
+- `representation` (str, default `'model'`): `'model'` evolves per-column prediction models (`GAMIPY.model_search`), `'cells'` one gene per missing cell (`GeneticAlgorithmRunner`). The initialization, selection, crossover, fitness-metric and statistics options only apply to `'cells'`; tests of the cells GA's mechanics (`test_integration.py`, `TestRun`) set `representation='cells'` explicitly.
 - Accuracy options: `validation_fraction` (0.1) + `patience` (10), `standardize` (True), `full_data_statistics` (True), `mutation_type` (`'gaussian'` or `'uniform'`) + `mutation_scale` (0.1), `result_method` (`'best'` / `'elite_mean'`) + `elite_size`. `validation_fraction=0, patience=0, standardize=False, full_data_statistics=False, mutation_type='uniform'` gives the classic GA; tests of classic GA mechanics set these explicitly.
 - `crossover_type` (str, default `'uniform'`): `CROSSOVER_TYPES` keys; `arithmetic`/`blend` need all-numerical missing cells
 - `tournament_size` (int, default 5), `ss_number` (int, default 1; `SteadyState.select()` returns `population_size - ss_number` individuals)
