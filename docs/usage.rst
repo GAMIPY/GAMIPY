@@ -32,10 +32,32 @@ real labels.
 ``run()`` returns ``None``; the input DataFrame is never modified, and cells
 that were observed in the input are left untouched in ``imputed_data``.
 
+Two representations
+-------------------
+
+GAMIPY is a pure genetic algorithm: no other imputation method seeds its
+population, enters its fitness or replaces its result. What an individual
+encodes is chosen with ``representation``:
+
+* ``"model"`` (the default): for every column with a missing value, a linear
+  model that predicts it from the other columns of the row (one score per
+  class for a categorical column). The GA evolves these models by how well
+  they predict the observed cells. Far fewer parameters than cells, so it
+  overfits much less; the more accurate mode on the bundled benchmarks.
+* ``"cells"``: one gene per missing cell. Candidate imputations are scored by
+  how well the statistics of the imputed dataset match the observed data. The
+  operator and fitness options below apply to this representation.
+
+.. code-block:: python
+
+    cells = GAMIPY(data=damaged, population_size=20, generations=10, representation="cells")
+    cells.run()
+    assert not cells.imputed_data.isnull().any().any()
+
 Choosing the genetic operators
 ------------------------------
 
-Every operator is selected by name:
+With ``representation="cells"`` every operator is selected by name:
 
 =========================== =============================================================================================================================================== ===========
 Argument                    Accepted values                                                                                                                                 Default
@@ -60,6 +82,7 @@ generation by ``steady_state``).
 
     gamipy = GAMIPY(
         data=damaged,
+        representation="cells",
         population_size=30,
         generations=10,
         selection_method="tournament",
@@ -81,55 +104,40 @@ construction:
     gamipy.config.selection_method = "rank"
     gamipy.run()
 
-How the default GA avoids overfitting
--------------------------------------
+Guarding against overfitting
+----------------------------
 
-GAMIPY is a pure genetic algorithm: no other imputation method seeds its
-population, enters its fitness or replaces its result. Matching summary
-statistics alone can be optimised past the truth, so by default the GA also:
+In both representations, 10% of the observed cells are hidden as
+**validation cells**; the result is the individual (or, for ``"model"``, each
+column's model) that imputes them best, and evolution stops once that stops
+improving (``validation_fraction=0.1``, ``patience=10``). The hidden values
+are put back in ``imputed_data``.
+
+Matching summary statistics alone can be optimised past the truth, so the
+cells representation also, by default:
 
 * compares **standardized** statistics of the **whole** imputed dataset with
   the observed data (``standardize=True``, ``full_data_statistics=True``);
-* mutates with small **Gaussian** steps (``mutation_type="gaussian"``);
-* hides 10% of the observed cells as **validation cells**, returns the
-  individual that imputes them best, and stops once that stops improving
-  (``validation_fraction=0.1``, ``patience=10``). The hidden values are put
-  back in ``imputed_data``.
+* mutates with small **Gaussian** steps (``mutation_type="gaussian"``).
 
 ``result_method="elite_mean"`` returns the average of the best individuals
 instead of the single best. Every switch can be changed; for example, the
-plain GA:
+plain cells GA:
 
 .. code-block:: python
 
     classic = GAMIPY(
-        data=damaged, population_size=20, generations=5,
+        data=damaged, representation="cells", population_size=20, generations=5,
         validation_fraction=0, patience=0, standardize=False,
         full_data_statistics=False, mutation_type="uniform",
     )
     classic.run()
     print(classic.runner.generations_run)   # 5: no early stopping
 
-Evolving prediction models instead of cell values
--------------------------------------------------
-
-With ``representation="model"`` an individual is not one value per missing
-cell but, for every column with a missing value, a linear model that
-predicts it from the other columns of the row (one score per class for a
-categorical column). The GA evolves these models by how well they predict the
-observed cells; far fewer parameters than cells, so it overfits much less and
-is the more accurate mode on the bundled benchmarks.
-
-.. code-block:: python
-
-    modelled = GAMIPY(data=damaged, population_size=20, generations=10, representation="model")
-    modelled.run()
-    assert not modelled.imputed_data.isnull().any().any()
-
 Seeding with a heuristic solution
 ---------------------------------
 
-The ``heuristic`` and ``hybrid`` strategies start from a guess you provide
+The ``heuristic`` and ``hybrid`` strategies (cells representation) start from a guess you provide
 (here: the middle of each column's observed range). ``heuristic_population`` has one row per
 missing cell, ``(row, row_m, column, value)``, where ``row`` is the row label
 in your DataFrame and ``row_m`` its position among the rows that contain a
@@ -150,6 +158,7 @@ produces the first three fields:
 
     gamipy = GAMIPY(
         data=numeric,
+        representation="cells",
         population_size=30,
         generations=10,
         initialization_strategy="hybrid",   # seeds + random individuals

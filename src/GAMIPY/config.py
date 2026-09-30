@@ -49,8 +49,9 @@ class GAConfig:
       the individual with the lowest validation error) or ``'elite_mean'`` (the average of the
       ``elite_size`` best, mode for categorical cells).
     - **elite_size (int)**: Individuals averaged by ``'elite_mean'`` (default 5).
-    - **representation (str)**: What an individual is: ``'cells'`` (default: one gene per missing
-      cell) or ``'model'`` (per-column linear prediction models, see ``GAMIPY.model_search``).
+    - **representation (str)**: What an individual is: ``'model'`` (default: per-column linear
+      prediction models, see ``GAMIPY.model_search``) or ``'cells'`` (one gene per missing cell).
+      The initialization, selection, crossover and fitness-metric options apply to ``'cells'``.
 
     GAMIPY is a pure genetic algorithm: no other imputation method seeds its
     population, enters its fitness or replaces its result. Other imputers
@@ -78,7 +79,7 @@ class GAConfig:
     mutation_scale: float = 0.1
     result_method: str = 'best'
     elite_size: int = 5
-    representation: str = 'cells'
+    representation: str = 'model'
 
     @property
     def selection_options(self) -> dict[str, Any]:

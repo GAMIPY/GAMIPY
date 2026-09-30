@@ -71,7 +71,7 @@ class GAMIPY:
                 mutation_scale: float = 0.1,
                 result_method: str = 'best',
                 elite_size: int = 5,
-                representation: str = 'cells') -> None:
+                representation: str = 'model') -> None:
         self.config = GAConfig(
             population_size=population_size,
             generations=generations,
