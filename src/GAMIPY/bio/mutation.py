@@ -1,6 +1,7 @@
 import random
 
 import numpy as np
+import numpy.typing as npt
 
 from GAMIPY.bio.value_sampling import CategoricalValueSampler, NumericalValueSampler, ValueSampler
 from GAMIPY.data.data import Data
@@ -149,3 +150,40 @@ class Mutation:
                 else:
                     raise ValueError(f"Unknown gene type: {gene.dtype}")
         return mutant
+
+
+class GaussianModelMutation:
+
+    """
+    Gaussian mutation for the model-based GA: each weight and bias of a child
+    is perturbed, with probability ``mutation_rate``, by normal noise with
+    standard deviation ``mutation_scale``. Weights that must stay zero (a
+    model's own column) are reset to zero.
+
+    Attributes
+    ----------
+    - **mutation_rate (float)**: Probability of mutating each weight and bias (default 0.01).
+    - **mutation_scale (float)**: Standard deviation of the noise (default 0.1).
+    """
+
+    def __init__(self, mutation_rate: float = 0.01, mutation_scale: float = 0.1) -> None:
+        self.mutation_rate = mutation_rate
+        self.mutation_scale = mutation_scale
+
+    def mutate(
+        self,
+        weights: npt.NDArray[np.float64],
+        bias: npt.NDArray[np.float64],
+        allowed: npt.NDArray[np.float64],
+    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+        """
+        Mutated copies of a candidate's weights (outputs x features) and bias
+        (outputs); `allowed` (same shape as `weights`) is 0 where a weight
+        must stay zero and 1 elsewhere.
+        """
+        mutated = np.random.random(weights.shape) < self.mutation_rate
+        noise = np.random.normal(0.0, self.mutation_scale, weights.shape)
+        weights = np.where(mutated, weights + noise, weights) * allowed
+        mutated_bias = np.random.random(bias.shape) < self.mutation_rate
+        bias = np.where(mutated_bias, bias + np.random.normal(0.0, self.mutation_scale, bias.shape), bias)
+        return weights, bias

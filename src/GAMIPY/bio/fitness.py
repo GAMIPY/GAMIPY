@@ -531,3 +531,153 @@ class Fitness:
             else:
                 raise ValueError(f"Column '{col}' is neither numeric nor categorical.")
         return mean_scores
+
+
+# Observed cells of each target column: rows and true values (standardized
+# values, or class indices for a categorical column).
+TargetCells = dict[Any, tuple[npt.NDArray[np.intp], npt.NDArray[np.float64]]]
+
+
+class ModelFitness:
+
+    """
+    Evaluates candidates of the model-based GA (``representation='model'``,
+    run by ``GAMIPY.model_search.ModelSearch``). A candidate holds one linear
+    model per target column (a column with a missing value); the models
+    predict the target from the other columns of the same row. The fitness of
+    a candidate is its error on the observed cells of every target: the
+    squared standardized error for a numerical target, and for a categorical
+    one the cross-entropy of the softmax of its class scores (``loss='log'``)
+    or the misclassification rate (``loss='zero_one'``). Lower is better.
+
+    Candidates are passed as arrays: ``weights`` (candidates x outputs x
+    features) and ``bias`` (candidates x outputs). A numerical target has one
+    output and a categorical target one output per class; a numerical input
+    column has one feature slot and a categorical one a slot per class
+    (one-hot).
+
+    Attributes
+    ----------
+    - **targets (list)**: The target columns, in output order.
+    - **numeric (set)**: The numerical columns.
+    - **feature_slots (dict)**: Feature positions of each column.
+    - **output_slots (dict)**: Output positions of each target.
+    - **chain_rounds (int)**: Rounds of re-predicting missing inputs from the models' own outputs (default 3).
+    - **n_jobs (int | None)**: Threads that score the candidates (see ``GAMIPY.parallel``).
+    - **training_loss (str)**: Loss of categorical targets in the fitness: ``'log'`` (a smooth signal the
+      GA can climb) or ``'zero_one'``.
+    - **selection_loss (str)**: Loss of categorical targets on the validation cells, used to pick the result.
+    """
+
+    training_loss = 'log'
+    selection_loss = 'log'
+
+    def __init__(
+        self,
+        targets: list[Any],
+        numeric: list[Any],
+        feature_slots: dict[Any, list[int]],
+        output_slots: dict[Any, list[int]],
+        chain_rounds: int = 3,
+        n_jobs: int | None = None,
+    ) -> None:
+        self.targets = targets
+        self.numeric = set(numeric)
+        self.feature_slots = feature_slots
+        self.output_slots = output_slots
+        self.chain_rounds = chain_rounds
+        self.n_jobs = n_jobs
+
+    def predict(
+        self,
+        weights: npt.NDArray[np.float64],
+        bias: npt.NDArray[np.float64],
+        features: npt.NDArray[np.float64],
+        missing: npt.NDArray[np.bool_],
+    ) -> npt.NDArray[np.float64]:
+        """
+        Outputs of every candidate's models (candidates x rows x outputs),
+        after ``chain_rounds`` rounds of filling the missing inputs with the
+        models' own predictions (a categorical input takes the one-hot code
+        of its predicted class).
+
+        Args
+        ----
+        - **weights (np.ndarray)**: Candidates x outputs x features.
+        - **bias (np.ndarray)**: Candidates x outputs.
+        - **features (np.ndarray)**: Rows x features, missing inputs set to 0.
+        - **missing (np.ndarray)**: Rows x features, True where the input is missing.
+        """
+        state = np.repeat(features[None], len(weights), axis=0)
+        for _ in range(self.chain_rounds):
+            outputs = state @ weights.transpose(0, 2, 1) + bias[:, None, :]
+            for col in self.targets:
+                rows = missing[:, self.feature_slots[col][0]]
+                if not rows.any():
+                    continue
+                out = self.output_slots[col]
+                if col in self.numeric:
+                    state[:, rows, self.feature_slots[col][0]] = outputs[:, rows, out[0]]
+                else:
+                    scores = outputs[:, rows][:, :, out]
+                    one_hot = np.eye(len(out))[scores.argmax(axis=2)]
+                    block = state[:, rows]
+                    block[:, :, self.feature_slots[col]] = one_hot
+                    state[:, rows] = block
+        result: npt.NDArray[np.float64] = state @ weights.transpose(0, 2, 1) + bias[:, None, :]
+        return result
+
+    def column_errors(self, outputs: npt.NDArray[np.float64], cells: TargetCells, loss: str) -> npt.NDArray[np.float64]:
+        """
+        Error of every candidate on each target (candidates x targets; NaN for
+        a target without cells in `cells`).
+
+        Args
+        ----
+        - **outputs (np.ndarray)**: Candidates x rows x outputs, from ``predict``.
+        - **cells (dict)**: The cells to score, see ``TargetCells``.
+        - **loss (str)**: ``'log'`` or ``'zero_one'``, for the categorical targets.
+        """
+        errors = np.full((len(outputs), len(self.targets)), np.nan)
+        for t, col in enumerate(self.targets):
+            rows, truth = cells.get(col, (np.array([], dtype=np.intp), np.array([])))
+            if not len(rows):
+                continue
+            out = self.output_slots[col]
+            if col in self.numeric:
+                errors[:, t] = ((outputs[:, rows, out[0]] - truth) ** 2).mean(axis=1)
+            elif loss == 'log':
+                scores = outputs[:, rows][:, :, out]
+                scores = scores - scores.max(axis=2, keepdims=True)
+                log_probability = scores - np.log(np.exp(scores).sum(axis=2, keepdims=True))
+                picked = np.take_along_axis(log_probability, truth.astype(int)[None, :, None], axis=2)[:, :, 0]
+                errors[:, t] = -picked.mean(axis=1)
+            else:
+                errors[:, t] = (outputs[:, rows][:, :, out].argmax(axis=2) != truth).mean(axis=1)
+        return errors
+
+    def evaluate(
+        self,
+        weights: npt.NDArray[np.float64],
+        bias: npt.NDArray[np.float64],
+        features: npt.NDArray[np.float64],
+        missing: npt.NDArray[np.bool_],
+        training: TargetCells,
+        validation: TargetCells,
+    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+        """
+        Training and validation errors of every candidate (candidates x
+        targets each; the training errors twice without validation cells),
+        computed in ``n_jobs`` threads over chunks of candidates. The training
+        errors are the fitness; the validation errors pick the result.
+        """
+
+        def score(part: slice) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+            outputs = self.predict(weights[part], bias[part], features, missing)
+            errors = self.column_errors(outputs, training, self.training_loss)
+            judged = self.column_errors(outputs, validation, self.selection_loss) if validation else errors
+            return errors, judged
+
+        parts = map_chunks(score, len(weights), thread_count(self.n_jobs))
+        return (np.concatenate([errors for errors, _ in parts]),
+                np.concatenate([judged for _, judged in parts]))

@@ -3,6 +3,9 @@ import random
 from abc import ABC, abstractmethod
 from typing import Any
 
+import numpy as np
+import numpy.typing as npt
+
 from GAMIPY.population.individual import Individual
 from GAMIPY.population.population import Population
 
@@ -484,3 +487,33 @@ SELECTION_METHODS: dict[str, type[Selection]] = {
     "steady_state": SteadyState,
     "stochastic_universal": StochasticUniversal,
 }
+
+
+class ColumnTournament:
+
+    """
+    Tournament selection for the model-based GA, which selects a parent for
+    each target column separately (cooperative coevolution): the candidates
+    compete on their error on that column only, so good models for different
+    columns found in different candidates can be combined.
+
+    Attributes
+    ----------
+    - **tournament_size (int)**: Candidates drawn (without replacement) per tournament (default 5).
+    """
+
+    def __init__(self, tournament_size: int = 5) -> None:
+        self.tournament_size = tournament_size
+
+    def select(self, scores: npt.NDArray[np.float64]) -> int:
+        """
+        Index of the tournament winner: the lowest score among
+        ``tournament_size`` candidates drawn at random (all of them if there
+        are fewer).
+
+        Args
+        ----
+        - **scores (np.ndarray)**: One score per candidate, lower is better.
+        """
+        entrants = np.random.choice(len(scores), size=min(self.tournament_size, len(scores)), replace=False)
+        return int(entrants[np.argmin(scores[entrants])])

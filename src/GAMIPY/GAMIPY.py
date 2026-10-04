@@ -105,7 +105,7 @@ class GAMIPY:
         self.data = Data(data)
         self.runner = GeneticAlgorithmRunner(self.config, self.data, self.factory)
         # representation='model': the GA evolves per-column prediction models.
-        self.model = ModelSearch(self.config, self.data) if representation == 'model' else None
+        self.model = ModelSearch(self.config, self.data, self.factory) if representation == 'model' else None
         self.imputed_data: pd.DataFrame | None = None
 
     @property

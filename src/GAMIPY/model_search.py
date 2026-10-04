@@ -13,6 +13,12 @@ scored by how well they predict observed cells, and missing inputs are filled
 with the models' own predictions (starting from the neutral value 0 of the
 standardized scale and refined over a few rounds). No other imputation
 method is involved.
+
+The genetic operators live in the Bio module, like those of the cell-value
+GA: ``ModelFitness`` (prediction and errors), ``ColumnTournament``
+(selection), ``ArithmeticModelCrossover`` and ``GaussianModelMutation``.
+``ModelSearch`` encodes the data, holds out the validation cells, runs the
+generations and builds the result.
 """
 from __future__ import annotations
 
@@ -22,9 +28,10 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from GAMIPY.bio.fitness import TargetCells
 from GAMIPY.config import GAConfig
 from GAMIPY.data.data import Data
-from GAMIPY.parallel import map_chunks, thread_count
+from GAMIPY.strategy_factory import StrategyFactory
 
 FloatArray = npt.NDArray[np.float64]
 
@@ -51,6 +58,9 @@ class ModelSearch:
     - **config (GAConfig)**: The hyperparameters (``population_size``, ``generations``,
       ``tournament_size``, ``crossover_rate``, ``mutation_rate``, ``mutation_scale``,
       ``validation_fraction``, ``patience``, ``n_jobs``).
+    - **factory (StrategyFactory)**: Builds the operators below from `config`.
+    - **fitness (ModelFitness)**, **selection (ColumnTournament)**, **crossover (ArithmeticModelCrossover)**,
+      **mutation (GaussianModelMutation)**: The genetic operators, from the Bio module.
     - **data (Data)**: The dataset as given.
     - **targets (list)**: The columns with a missing value, whose models are evolved.
     - **generations_run (int)**: Generations evaluated by the last ``run()``.
@@ -61,14 +71,9 @@ class ModelSearch:
       without validation cells).
     """
 
-    # How categorical targets are scored: 'log' (cross-entropy of the class
-    # scores' softmax: a smooth signal the GA can climb) or 'zero_one'
-    # (misclassification rate), for the fitness and for picking the result.
-    training_loss = 'log'
-    selection_loss = 'log'
-
-    def __init__(self, config: GAConfig, data: Data) -> None:
+    def __init__(self, config: GAConfig, data: Data, factory: StrategyFactory | None = None) -> None:
         self.config = config
+        self.factory = factory if factory is not None else StrategyFactory(config)
         self.data = data
         frame = data.data
         self.numeric = list(data.get_numeric_columns)
@@ -83,6 +88,13 @@ class ModelSearch:
         self.best_validation_error: float | None = None
         self.history: list[dict[str, float]] = []
         self._layout()
+        self.fitness = self.factory.model_fitness(
+            targets=self.targets, numeric=self.numeric, feature_slots=self.feature_slots,
+            output_slots=self.output_slots, chain_rounds=CHAIN_ROUNDS,
+        )
+        self.selection = self.factory.model_selection()
+        self.crossover = self.factory.model_crossover()
+        self.mutation = self.factory.model_mutation()
 
     @staticmethod
     def _usable_scale(std: Any) -> float:
@@ -133,77 +145,9 @@ class ModelSearch:
             missing[:, slots] = absent[:, None]
         return features, missing
 
-    # --- prediction -------------------------------------------------------
+    # --- data --------------------------------------------------------------
 
-    def _predict(self, weights: FloatArray, bias: FloatArray, features: FloatArray,
-                 missing: npt.NDArray[np.bool_]) -> FloatArray:
-        """Outputs of every model (candidates x rows x outputs), after
-        ``CHAIN_ROUNDS`` rounds of filling missing inputs with the models' own
-        predictions."""
-        state = np.repeat(features[None], len(weights), axis=0)
-        for _ in range(CHAIN_ROUNDS):
-            outputs = state @ weights.transpose(0, 2, 1) + bias[:, None, :]
-            for col in self.targets:
-                rows = missing[:, self.feature_slots[col][0]]
-                if not rows.any():
-                    continue
-                out = self.output_slots[col]
-                if col in self.numeric:
-                    state[:, rows, self.feature_slots[col][0]] = outputs[:, rows, out[0]]
-                else:
-                    scores = outputs[:, rows][:, :, out]
-                    one_hot = np.eye(len(out))[scores.argmax(axis=2)]
-                    block = state[:, rows]
-                    block[:, :, self.feature_slots[col]] = one_hot
-                    state[:, rows] = block
-        return state @ weights.transpose(0, 2, 1) + bias[:, None, :]
-
-    def _column_errors(
-        self, outputs: FloatArray, cells: dict[Any, tuple[npt.NDArray[np.intp], FloatArray]], loss: str,
-    ) -> FloatArray:
-        """Error of every candidate on each target (candidates x targets, NaN
-        for a target without cells in `cells`): squared standardized error
-        for numerical targets; for categorical ones, the cross-entropy of the
-        softmax of the class scores (``loss='log'``) or the misclassification
-        rate (``loss='zero_one'``)."""
-        errors = np.full((len(outputs), len(self.targets)), np.nan)
-        for t, col in enumerate(self.targets):
-            rows, truth = cells.get(col, (np.array([], dtype=np.intp), np.array([])))
-            if not len(rows):
-                continue
-            out = self.output_slots[col]
-            if col in self.numeric:
-                errors[:, t] = ((outputs[:, rows, out[0]] - truth) ** 2).mean(axis=1)
-            elif loss == 'log':
-                scores = outputs[:, rows][:, :, out]
-                scores = scores - scores.max(axis=2, keepdims=True)
-                log_probability = scores - np.log(np.exp(scores).sum(axis=2, keepdims=True))
-                picked = np.take_along_axis(log_probability, truth.astype(int)[None, :, None], axis=2)[:, :, 0]
-                errors[:, t] = -picked.mean(axis=1)
-            else:
-                errors[:, t] = (outputs[:, rows][:, :, out].argmax(axis=2) != truth).mean(axis=1)
-        return errors
-
-    def _evaluate(
-        self, weights: FloatArray, bias: FloatArray, features: FloatArray, missing: npt.NDArray[np.bool_],
-        training: dict[Any, tuple[npt.NDArray[np.intp], FloatArray]],
-        validation: dict[Any, tuple[npt.NDArray[np.intp], FloatArray]],
-    ) -> tuple[FloatArray, FloatArray]:
-        """Training and validation errors of every candidate (candidates x
-        targets each; the training errors twice without validation cells),
-        computed in ``config.n_jobs`` threads over chunks of candidates."""
-
-        def score(part: slice) -> tuple[FloatArray, FloatArray]:
-            outputs = self._predict(weights[part], bias[part], features, missing)
-            errors = self._column_errors(outputs, training, self.training_loss)
-            judged = self._column_errors(outputs, validation, self.selection_loss) if validation else errors
-            return errors, judged
-
-        parts = map_chunks(score, len(weights), thread_count(self.config.n_jobs))
-        return (np.concatenate([errors for errors, _ in parts]),
-                np.concatenate([judged for _, judged in parts]))
-
-    def _cells(self, frame: pd.DataFrame) -> dict[Any, tuple[npt.NDArray[np.intp], FloatArray]]:
+    def _cells(self, frame: pd.DataFrame) -> TargetCells:
         """Observed cells of each target in `frame`: rows and true values
         (standardized, or class index)."""
         cells = {}
@@ -224,10 +168,6 @@ class ModelSearch:
         bias = np.random.normal(0.0, INIT_SCALE, (count, self.n_outputs))
         return weights, bias
 
-    def _tournament(self, scores: FloatArray) -> int:
-        entrants = np.random.choice(len(scores), size=min(self.config.tournament_size, len(scores)), replace=False)
-        return int(entrants[np.argmin(scores[entrants])])
-
     def _next_generation(
         self, weights: FloatArray, bias: FloatArray, errors: FloatArray,
     ) -> tuple[FloatArray, FloatArray]:
@@ -235,8 +175,8 @@ class ModelSearch:
         The next population. The fitness is a sum over target columns and each
         target has its own model, so selection works per target (cooperative
         coevolution): a child's model for a target comes from tournaments on
-        that target's error, so good models for different columns found in
-        different individuals are combined. Kept as they are: the individuals
+        that target's error (``ColumnTournament``), so good models for
+        different columns found in different individuals are combined. Kept as they are: the individuals
         with the lowest total error, and one individual assembled from the
         best model of every target. Then random immigrants.
         """
@@ -258,18 +198,10 @@ class ModelSearch:
             c: FloatArray = np.empty(self.n_outputs)
             for t, col in enumerate(self.targets):
                 slots = self.output_slots[col]
-                a, b = self._tournament(filled[:, t]), self._tournament(filled[:, t])
-                if np.random.random() < self.config.crossover_rate:
-                    share = np.random.random()
-                    w[slots] = share * weights[a, slots] + (1 - share) * weights[b, slots]
-                    c[slots] = share * bias[a, slots] + (1 - share) * bias[b, slots]
-                else:
-                    w[slots], c[slots] = weights[a, slots], bias[a, slots]
-            mutated = np.random.random(w.shape) < self.config.mutation_rate
-            w = np.where(mutated, w + np.random.normal(0.0, self.config.mutation_scale, w.shape), w) * self.allowed
-            mutated_b = np.random.random(c.shape) < self.config.mutation_rate
-            c = np.where(mutated_b, c + np.random.normal(0.0, self.config.mutation_scale, c.shape), c)
-            children_w[i], children_b[i] = w, c
+                a, b = self.selection.select(filled[:, t]), self.selection.select(filled[:, t])
+                w[slots], c[slots] = self.crossover.cross(weights[a, slots], bias[a, slots],
+                                                          weights[b, slots], bias[b, slots])
+            children_w[i], children_b[i] = self.mutation.mutate(w, c, self.allowed)
         return (np.concatenate([weights[elite], assembled_w[None], immigrants_w, children_w]),
                 np.concatenate([bias[elite], assembled_b[None], immigrants_b, children_b]))
 
@@ -291,7 +223,7 @@ class ModelSearch:
             return result
         # Validation cells: hidden from the models' inputs and training cells.
         working = frame.copy()
-        validation: dict[Any, tuple[npt.NDArray[np.intp], FloatArray]] = {}
+        validation: TargetCells = {}
         if self.config.validation_fraction > 0:
             for col in self.targets:
                 observed = np.flatnonzero(frame[col].notna().to_numpy())
@@ -313,7 +245,7 @@ class ModelSearch:
         best_models: list[tuple[float, FloatArray, FloatArray] | None] = [None] * len(self.targets)
         since_improvement = 0
         for _ in range(self.config.generations):
-            errors, judged = self._evaluate(weights, bias, features, missing, training, validation)
+            errors, judged = self.fitness.evaluate(weights, bias, features, missing, training, validation)
             self.generations_run += 1
             improved = False
             for t, col in enumerate(self.targets):
@@ -349,7 +281,7 @@ class ModelSearch:
             self.best_validation_error = float(np.mean([m[0] for m in best_models if m is not None]))
         best = (0.0, final_w, final_b)
         features, missing = self._encode(frame)
-        outputs = self._predict(best[1][None], best[2][None], features, missing)[0]
+        outputs = self.fitness.predict(best[1][None], best[2][None], features, missing)[0]
         for col in self.targets:
             rows = frame[col].isna().to_numpy()
             out = self.output_slots[col]

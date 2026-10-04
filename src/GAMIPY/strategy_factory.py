@@ -1,10 +1,10 @@
 from typing import Any
 
-from GAMIPY.bio.crossover import Crossover
+from GAMIPY.bio.crossover import ArithmeticModelCrossover, Crossover
 from GAMIPY.bio.distance import DistanceMetric
-from GAMIPY.bio.fitness import Fitness
-from GAMIPY.bio.mutation import Mutation
-from GAMIPY.bio.selection import Selection
+from GAMIPY.bio.fitness import Fitness, ModelFitness
+from GAMIPY.bio.mutation import GaussianModelMutation, Mutation
+from GAMIPY.bio.selection import ColumnTournament, Selection
 from GAMIPY.config import GAConfig
 from GAMIPY.data.data import Data
 from GAMIPY.data.missing_index import MissingCell
@@ -98,3 +98,28 @@ class StrategyFactory:
             mutation_type=self.config.mutation_type,
             mutation_scale=self.config.mutation_scale,
         )
+
+    # Operators of the model-based GA (representation='model', run by
+    # ModelSearch), built from the same config.
+
+    def model_fitness(
+        self,
+        targets: list[Any],
+        numeric: list[Any],
+        feature_slots: dict[Any, list[int]],
+        output_slots: dict[Any, list[int]],
+        chain_rounds: int,
+    ) -> ModelFitness:
+        # The layout (which column occupies which feature/output slots) comes
+        # from the data, so ModelSearch passes it in.
+        return ModelFitness(targets=targets, numeric=numeric, feature_slots=feature_slots,
+                            output_slots=output_slots, chain_rounds=chain_rounds, n_jobs=self.config.n_jobs)
+
+    def model_selection(self) -> ColumnTournament:
+        return ColumnTournament(tournament_size=self.config.tournament_size)
+
+    def model_crossover(self) -> ArithmeticModelCrossover:
+        return ArithmeticModelCrossover(crossover_rate=self.config.crossover_rate)
+
+    def model_mutation(self) -> GaussianModelMutation:
+        return GaussianModelMutation(mutation_rate=self.config.mutation_rate, mutation_scale=self.config.mutation_scale)

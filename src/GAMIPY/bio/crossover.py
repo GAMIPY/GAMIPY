@@ -1,6 +1,9 @@
 import random
 from abc import ABC, abstractmethod
 
+import numpy as np
+import numpy.typing as npt
+
 from GAMIPY.population.gene import Gene
 from GAMIPY.population.individual import Individual
 
@@ -431,3 +434,42 @@ CROSSOVER_TYPES: dict[str, type[Crossover]] = {
     "arithmetic": Arithmetic,
     "blend": Blend,
 }
+
+
+class ArithmeticModelCrossover:
+
+    """
+    Arithmetic crossover for the model-based GA: with probability
+    ``crossover_rate`` the child's model for a target column is a random
+    weighted average of the two parents' models, otherwise a copy of the first
+    parent's model.
+
+    Attributes
+    ----------
+    - **crossover_rate (float)**: Probability of crossing two parent models (default 0.1).
+    """
+
+    def __init__(self, crossover_rate: float = 0.1) -> None:
+        self.crossover_rate = crossover_rate
+
+    def cross(
+        self,
+        weights_a: npt.NDArray[np.float64],
+        bias_a: npt.NDArray[np.float64],
+        weights_b: npt.NDArray[np.float64],
+        bias_b: npt.NDArray[np.float64],
+    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+        """
+        The child's weights and bias for one target column: with probability
+        ``crossover_rate``, ``share * a + (1 - share) * b`` with ``share``
+        drawn uniformly from [0, 1); otherwise parent ``a``'s.
+
+        Args
+        ----
+        - **weights_a, bias_a (np.ndarray)**: The first parent's model for the column.
+        - **weights_b, bias_b (np.ndarray)**: The second parent's model for the column.
+        """
+        if np.random.random() < self.crossover_rate:
+            share = np.random.random()
+            return share * weights_a + (1 - share) * weights_b, share * bias_a + (1 - share) * bias_b
+        return weights_a, bias_a
