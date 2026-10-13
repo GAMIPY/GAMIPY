@@ -54,6 +54,21 @@ encodes is chosen with ``representation``:
     cells.run()
     assert not cells.imputed_data.isnull().any().any()
 
+Reproducible results
+--------------------
+
+Pass ``random_state`` to get the same imputation every time. The one number
+seeds every random number generator the GA draws from, and your own
+generators are left as they were.
+
+.. code-block:: python
+
+    first = GAMIPY(data=damaged, population_size=20, generations=5, random_state=42)
+    first.run()
+    second = GAMIPY(data=damaged, population_size=20, generations=5, random_state=42)
+    second.run()
+    assert first.imputed_data.equals(second.imputed_data)
+
 Threads
 -------
 

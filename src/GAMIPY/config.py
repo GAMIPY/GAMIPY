@@ -55,6 +55,10 @@ class GAConfig:
     - **n_jobs (int | None)**: Threads that score the population (default None: up to 4, one per
       core; -1: every core; 1: no threads). Only the scoring runs in threads, so the result is
       the same for any value (see ``GAMIPY.parallel``).
+    - **random_state (int | None)**: Seed of the run (default None: not seeded). ``GAMIPY`` seeds
+      every random number generator the GA draws from (NumPy's and Python's ``random``) with it,
+      while it is built (the cells GA draws its validation cells then) and during ``run()``, so the
+      same seed gives the same imputation; it restores the caller's generator states afterwards.
 
     GAMIPY is a pure genetic algorithm: no other imputation method seeds its
     population, enters its fitness or replaces its result. Other imputers
@@ -84,6 +88,7 @@ class GAConfig:
     elite_size: int = 5
     representation: str = 'model'
     n_jobs: int | None = None
+    random_state: int | None = None
 
     @property
     def selection_options(self) -> dict[str, Any]:

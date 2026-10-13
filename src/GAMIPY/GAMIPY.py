@@ -1,3 +1,8 @@
+import random
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+import numpy as np
 import pandas as pd
 
 from .bio.crossover import Crossover
@@ -42,6 +47,8 @@ class GAMIPY:
     - **ss_number (int)**: Individuals replaced per generation by ``'steady_state'`` (default 1).
     - **validation_fraction, patience, standardize, full_data_statistics, mutation_type,
       mutation_scale, result_method, elite_size, representation, n_jobs**: see :class:`~GAMIPY.config.GAConfig`.
+    - **random_state (int | None)**: Seed of the construction and of ``run()`` (default None: not
+      seeded). The same seed gives the same imputation; see :class:`~GAMIPY.config.GAConfig`.
 
     Attributes
     ----------
@@ -73,7 +80,8 @@ class GAMIPY:
                 result_method: str = 'best',
                 elite_size: int = 5,
                 representation: str = 'model',
-                n_jobs: int | None = None) -> None:
+                n_jobs: int | None = None,
+                random_state: int | None = None) -> None:
         self.config = GAConfig(
             population_size=population_size,
             generations=generations,
@@ -97,15 +105,19 @@ class GAMIPY:
             elite_size=elite_size,
             representation=representation,
             n_jobs=n_jobs,
+            random_state=random_state,
         )
         if representation not in ('cells', 'model'):
             raise ValueError(f"representation must be 'cells' or 'model', got {representation!r}.")
         thread_count(n_jobs)  # raises for an invalid value
         self.factory = StrategyFactory(self.config)
         self.data = Data(data)
-        self.runner = GeneticAlgorithmRunner(self.config, self.data, self.factory)
-        # representation='model': the GA evolves per-column prediction models.
-        self.model = ModelSearch(self.config, self.data, self.factory) if representation == 'model' else None
+        # The cells GA draws its validation cells when it is built, so the
+        # seed covers construction as well as run().
+        with _seeded(random_state):
+            self.runner = GeneticAlgorithmRunner(self.config, self.data, self.factory)
+            # representation='model': the GA evolves per-column prediction models.
+            self.model = ModelSearch(self.config, self.data, self.factory) if representation == 'model' else None
         self.imputed_data: pd.DataFrame | None = None
 
     @property
@@ -136,11 +148,33 @@ class GAMIPY:
         return self.runner.build_result(individual)
 
     def run(self) -> None:
-        if self.model is not None:
-            self.imputed_data = self.model.run()
-            return
-        best_individual = self.runner.run()
-        self.imputed_data = self.impute_data(best_individual)
+        with _seeded(self.config.random_state):
+            if self.model is not None:
+                self.imputed_data = self.model.run()
+                return
+            best_individual = self.runner.run()
+            self.imputed_data = self.impute_data(best_individual)
+
+
+@contextmanager
+def _seeded(random_state: int | None) -> Iterator[None]:
+    """
+    Seeds NumPy's and Python's global random number generators with
+    `random_state` for the duration of the block, then restores their
+    previous states. The GA draws from both; does nothing for None.
+    """
+    if random_state is None:
+        yield
+        return
+    numpy_state, python_state = np.random.get_state(), random.getstate()
+    np.random.seed(random_state)
+    random.seed(random_state)
+    try:
+        yield
+    finally:
+        np.random.set_state(numpy_state)
+        random.setstate(python_state)
+
 
 if __name__ == "__main__":
     mock_data = sample_data.SampleData.mock_data1()

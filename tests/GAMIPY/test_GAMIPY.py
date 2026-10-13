@@ -1,3 +1,4 @@
+import random
 import unittest
 
 import numpy as np
@@ -5,6 +6,7 @@ import pandas as pd
 
 from GAMIPY.bio.distance import CosineDistance, EuclideanDistance
 from GAMIPY.bio.selection import Elitist, Rank, SteadyState, Tournament
+from GAMIPY.datasets.sample_data import SampleData
 from GAMIPY.GAMIPY import GAMIPY
 from GAMIPY.population.population import (
     ConstantPopulation,
@@ -506,6 +508,53 @@ class TestRun(unittest.TestCase):
                 )
                 gamipy.run()
                 self.assertEqual(len(gamipy.population.population), 20)
+
+
+class TestRandomState(unittest.TestCase):
+    """Covers ``random_state``: one seed makes run() reproducible in both
+    representations (the cells GA draws from NumPy's and Python's random
+    number generators) and leaves the caller's generators as they were."""
+
+    def setUp(self):
+        iris = SampleData().load_data("iris")
+        self.damaged = iris.mask(np.random.default_rng(1).random(iris.shape) < 0.2)
+
+    def _run(self, representation: str, random_state: int | None) -> pd.DataFrame:
+        gamipy = GAMIPY(data=self.damaged, representation=representation, population_size=20,
+                        generations=5, random_state=random_state)
+        gamipy.run()
+        assert gamipy.imputed_data is not None
+        return gamipy.imputed_data
+
+    def test_same_seed_gives_the_same_imputation(self):
+        for representation in ('model', 'cells'):
+            with self.subTest(representation=representation):
+                # Disturb both global generators between the runs: the seed alone must decide.
+                first = self._run(representation, 7)
+                np.random.random()
+                random.random()
+                pd.testing.assert_frame_equal(first, self._run(representation, 7))
+
+    def test_different_seeds_give_different_imputations(self):
+        for representation in ('model', 'cells'):
+            with self.subTest(representation=representation):
+                self.assertFalse(self._run(representation, 7).equals(self._run(representation, 8)))
+
+    def test_run_restores_the_callers_generator_states(self):
+        np.random.seed(123)
+        random.seed(123)
+        numpy_before, python_before = np.random.random(), random.random()
+        np.random.seed(123)
+        random.seed(123)
+        self._run('cells', 7)
+        self.assertEqual(np.random.random(), numpy_before)
+        self.assertEqual(random.random(), python_before)
+
+    def test_seed_set_on_config_after_construction_is_used(self):
+        gamipy = GAMIPY(data=self.damaged, population_size=20, generations=5)
+        gamipy.config.random_state = 7
+        gamipy.run()
+        pd.testing.assert_frame_equal(gamipy.imputed_data, self._run('model', 7))
 
 
 class TestImputeData(unittest.TestCase):
