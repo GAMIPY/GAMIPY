@@ -6,10 +6,10 @@
 # Tests and coverage
 pytest==9.1.1
 coverage==7.16.2
-tox==4.64.4
+tox==4.65.0
 
 # Linting / types. pandas-stubs matches pandas==2.2.2 in requirements.txt.
-ruff==0.16.9
+ruff==0.17.2
 mypy==1.14.1
 pandas-stubs==2.2.2.240807
 pre-commit==4.6.2
