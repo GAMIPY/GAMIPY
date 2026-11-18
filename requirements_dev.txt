@@ -9,7 +9,7 @@ coverage==7.16.2
 tox==4.65.0
 
 # Linting / types. pandas-stubs matches pandas==2.2.2 in requirements.txt.
-ruff==0.17.3
+ruff==0.17.5
 mypy==1.14.1
 pandas-stubs==2.2.2.240807
 pre-commit==4.6.2
